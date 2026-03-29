@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read upstream pin
+        id: pin
+        shell: bash
+        run: echo "ref=$(tr -d '[:space:]' < .upstream-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (load locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: signoz-mcp-server:test
+          build-args: |
+            SIGNOZ_MCP_REF=${{ steps.pin.outputs.ref }}
+
+      - name: Start container
+        run: |
+          docker run -d --name signoz-mcp-test \
+            -e TRANSPORT_MODE=http \
+            -e MCP_SERVER_PORT=8000 \
+            -p 8000:8000 \
+            signoz-mcp-server:test
+
+      - name: Wait for /healthz
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:8000/healthz" | grep -q ok; then
+              echo "healthz ok"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs signoz-mcp-test
+          exit 1
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs signoz-mcp-test || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f signoz-mcp-test || true
