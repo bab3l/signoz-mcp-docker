@@ -3,7 +3,7 @@
 # Pin upstream release: https://github.com/SigNoz/signoz-mcp-server/releases
 ARG SIGNOZ_MCP_REF=v0.1.0
 
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 ARG SIGNOZ_MCP_REF
 ARG TARGETARCH
 
